@@ -22,14 +22,17 @@
 
 using namespace std;
 
-int main() {
+int main()
+{
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     printf("Using protocol version %d\n", bolt->version);
 
     bolt_init(bolt, "c-driver/1.0");
 
-    bolt_run(bolt, "RETURN 1", 0, NULL);
-    bolt_pull_all(bolt);
+    for (int i = 0; i < 3; i++) {
+        bolt_run(bolt, "RETURN 1", 0, NULL);
+        bolt_pull_all(bolt);
+    }
 
     bolt_disconnect(bolt);
 

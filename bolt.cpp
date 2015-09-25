@@ -25,7 +25,7 @@
 
 using namespace std;
 
-void dump(ssize_t size, const char *buffer)
+void dump(const char *buffer, ssize_t size)
 {
     for (int byte_index = 0; byte_index < size; byte_index++) {
         if (byte_index > 0) {
@@ -46,13 +46,21 @@ void bolt_reset_writer(Bolt *bolt)
     bolt->writer = bolt->write_buffer + 2;
 }
 
+ssize_t bolt_send(Bolt *bolt, const char *buffer, size_t size)
+{
+    ssize_t sent = send(bolt->socket, buffer, size, 0);
+    cerr << "C: ";
+    dump(buffer, size);
+    return sent;
+}
+
 void bolt_send_chunk(Bolt *bolt)
 {
     size_t send_size = bolt->writer - bolt->write_buffer;
     size_t chunk_size = send_size - 2;
     char chunk_header[] = {(char) (chunk_size >> 8), (char) (chunk_size & 0xFF)};
     memcpy(bolt->write_buffer, chunk_header, 2);
-    send(bolt->socket, bolt->write_buffer, send_size, 0);
+    bolt_send(bolt, bolt->write_buffer, send_size);
 }
 
 void bolt_send_message(Bolt *bolt)
@@ -62,14 +70,22 @@ void bolt_send_message(Bolt *bolt)
     char chunk_header[] = {(char) (chunk_size >> 8), (char) (chunk_size & 0xFF)};
     memcpy(bolt->write_buffer, chunk_header, 2);
     memcpy(bolt->writer, END_OF_MESSAGE, 2);
-    send(bolt->socket, bolt->write_buffer, send_size + 2, 0);
+    bolt_send(bolt, bolt->write_buffer, send_size + 2);
+}
+
+ssize_t bolt_recv(Bolt *bolt, void *buffer, size_t size)
+{
+    ssize_t received = recv(bolt->socket, buffer, size, 0);
+    cerr << "S: ";
+    dump((char *) buffer, size);
+    return received;
 }
 
 uint32_t bolt_recv_uint32(Bolt *bolt)
 {
     unsigned char buffer[4];
 
-    ssize_t received = recv(bolt->socket, buffer, sizeof(buffer), 0);
+    ssize_t received = bolt_recv(bolt, buffer, sizeof(buffer));
     if (received < 0) {
         puts("recv failed");
     }
@@ -82,7 +98,7 @@ size_t bolt_read_chunk_header(Bolt *bolt)
 {
     char buffer[2];
 
-    ssize_t received = recv(bolt->socket, buffer, sizeof(buffer), 0);
+    ssize_t received = bolt_recv(bolt, buffer, sizeof(buffer));
     if (received < 0) {
         puts("recv failed");
     }
@@ -92,7 +108,7 @@ size_t bolt_read_chunk_header(Bolt *bolt)
 
 void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size)
 {
-    recv(bolt->socket, bolt->read_buffer, chunk_size, 0);
+    bolt_recv(bolt, bolt->read_buffer, chunk_size);
 }
 
 void bolt_read_message(Bolt *bolt)
@@ -103,7 +119,6 @@ void bolt_read_message(Bolt *bolt)
         chunk_size = bolt_read_chunk_header(bolt);
         if (chunk_size > 0) {
             bolt_read_chunk_data(bolt, chunk_size);
-            cerr << "S: "; dump(chunk_size, bolt->read_buffer);
             // TODO check for buffer overflow
             strncpy(bolt->message + bolt->message_size, bolt->read_buffer, chunk_size);
             bolt->message_size += chunk_size;
@@ -146,7 +161,7 @@ Bolt *bolt_connect(const char *host, const in_port_t port)
     }
 
     // Perform handshake
-    send(bolt->socket, "\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16, 0);
+    bolt_send(bolt, "\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
     bolt->version = bolt_recv_uint32(bolt);
 
     return bolt;
