@@ -49,8 +49,7 @@ void bolt_reset_writer(Bolt *bolt)
 ssize_t bolt_send(Bolt *bolt, const char *buffer, size_t size)
 {
     ssize_t sent = send(bolt->socket, buffer, size, 0);
-    cerr << "C: ";
-    dump(buffer, size);
+    //cerr << "C: "; dump(buffer, size);
     return sent;
 }
 
@@ -76,8 +75,7 @@ void bolt_send_message(Bolt *bolt)
 ssize_t bolt_recv(Bolt *bolt, void *buffer, size_t size)
 {
     ssize_t received = recv(bolt->socket, buffer, size, 0);
-    cerr << "S: ";
-    dump((char *) buffer, size);
+    //cerr << "S: "; dump((char *) buffer, size);
     return received;
 }
 
@@ -126,9 +124,6 @@ void bolt_read_message(Bolt *bolt)
     } while (chunk_size > 0);
     bolt->message_field_count = bolt->message[0] & 0x0F;
     bolt->message_signature = bolt->message[1];
-    if (bolt->message_signature == FAILURE_MESSAGE) {
-
-    }
 }
 
 Bolt *bolt_connect(const char *host, const in_port_t port)
@@ -178,8 +173,6 @@ void bolt_init(Bolt *bolt, const char *user_agent)
     packstream_write_struct_header(&bolt->writer, 1, INIT_MESSAGE);
     packstream_write_text(&bolt->writer, strlen(user_agent), user_agent);
     bolt_send_message(bolt);
-
-    bolt_read_message(bolt);
 }
 
 void bolt_run(Bolt *bolt, const char *statement, size_t parameter_count, PackStream_Pair *parameters)
@@ -189,8 +182,6 @@ void bolt_run(Bolt *bolt, const char *statement, size_t parameter_count, PackStr
     packstream_write_text(&bolt->writer, strlen(statement), statement);
     packstream_write_map(&bolt->writer, parameter_count, parameters);
     bolt_send_message(bolt);
-
-    bolt_read_message(bolt);
 }
 
 void bolt_pull_all(Bolt *bolt)
@@ -198,8 +189,4 @@ void bolt_pull_all(Bolt *bolt)
     bolt_reset_writer(bolt);
     packstream_write_struct_header(&bolt->writer, 0, PULL_ALL_MESSAGE);
     bolt_send_message(bolt);
-
-    do {
-        bolt_read_message(bolt);
-    } while (bolt->message_signature == RECORD_MESSAGE);
 }
