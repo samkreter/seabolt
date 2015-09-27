@@ -21,45 +21,112 @@
 
 using namespace std;
 
-void packstream_read_header(const char **buffer, PackStream_Value *header)
+PackStream_Type packstream_next_type(const char *buffer)
 {
-    size_t byte_size = 1;
-    char marker;
-    memcpy(&marker, *buffer, 1);
-    char marker_high_nibble = (char) ((marker & 0xF0) >> 4);
-    char marker_low_nibble = (char) (marker & 0xF);
-    if (marker_high_nibble == 0x8) {
-        header->type = PACKSTREAM_TEXT;
-        header->size = (size_t) marker_low_nibble;
-    } else if (marker_high_nibble == 0x9) {
-        header->type = PACKSTREAM_LIST;
-        header->size = (size_t) marker_low_nibble;
-    } else if (marker_high_nibble == 0xA) {
-        header->type = PACKSTREAM_MAP;
-        header->size = (size_t) marker_low_nibble;
-    } else if (marker_high_nibble == 0xB) {
-        header->size = (size_t) marker_low_nibble;
-        char signature;
-        memcpy(&signature, *buffer + 1, 1);
-        if (signature == 'N') {
-            header->type = PACKSTREAM_NODE;
-        } else {
-            // unknown structure type
-            header->type = PACKSTREAM_STRUCTURE;
-        }
-    } else if (marker == (char) 0xD0) {
-        header->type = PACKSTREAM_TEXT;
-        memcpy(&(header->size), *buffer + 1, 1);
-        byte_size += 1;
-    } else if (marker == (char) 0xD4) {
-        header->type = PACKSTREAM_LIST;
-        memcpy(&(header->size), *buffer + 1, 1);
-        byte_size += 1;
-    } else {
-        header->type = PACKSTREAM_INTEGER;
-        header->value = (void *) &marker;
+    PackStream_Type type;
+    unsigned char marker = (unsigned char) buffer[0];
+    if (marker < 128 or marker >= 240 or marker == 0xC8 or marker == 0xC9 or marker == 0xCA or marker == 0xCB) {
+        type = PACKSTREAM_INTEGER;
     }
-    *buffer += byte_size;
+    else if (marker == 0xC0) {
+        type = PACKSTREAM_NULL;
+    }
+    else if (marker == 0xC1) {
+        type = PACKSTREAM_FLOAT;
+    }
+    else if (marker == 0xC2 or marker == 0xC3) {
+        type = PACKSTREAM_BOOLEAN;
+    }
+    else if (marker == 0xCC or marker == 0xCD or marker == 0xCE) {
+        type = PACKSTREAM_BYTES;
+    }
+    else if (marker == 0xD0 or marker == 0xD1 or marker == 0xD2) {
+        type = PACKSTREAM_TEXT;
+    }
+    else if (marker == 0xD4 or marker == 0xD5 or marker == 0xD6 or marker == 0xD7) {
+        type = PACKSTREAM_LIST;
+    }
+    else if (marker == 0xD8 or marker == 0xD9 or marker == 0xDA or marker == 0xDB) {
+        type = PACKSTREAM_MAP;
+    }
+    else if (marker == 0xDC or marker == 0xDD) {
+        type = PACKSTREAM_STRUCTURE;
+    }
+    else if (marker == 0xDF) {
+        type = PACKSTREAM_END_OF_STREAM;
+    }
+    else {
+        unsigned char marker_high_nibble = (unsigned char) ((marker & 0xF0) >> 4);
+        if (marker_high_nibble == 0x8) {
+            type = PACKSTREAM_TEXT;
+        }
+        else if (marker_high_nibble == 0x9) {
+            type = PACKSTREAM_LIST;
+        }
+        else if (marker_high_nibble == 0xA) {
+            type = PACKSTREAM_MAP;
+        }
+        else if (marker_high_nibble == 0xB) {
+            type = PACKSTREAM_STRUCTURE;
+        }
+        else {
+            type = PACKSTREAM_RESERVED;
+        }
+    }
+    return type;
+}
+
+int32_t packstream_read_list_size(char **buffer)
+{
+    int32_t size;
+    unsigned char marker = (unsigned char) *buffer[0];
+    if (marker == 0xD4) {
+        size = (uint8_t) *buffer[1];
+        *buffer += 2;
+    }
+    else if (marker == 0xD5) {
+        size = ((uint8_t) *buffer[1] << 8) | ((uint8_t) *buffer[2]);
+        *buffer += 3;
+    }
+    else if (marker == 0xD6) {
+        size = ((uint8_t) *buffer[1] << 24) | ((uint8_t) *buffer[2] << 16) |
+                ((uint8_t) *buffer[3] << 8) | ((uint8_t) *buffer[4]);
+        *buffer += 5;
+    }
+    else if (marker == 0xD7) {
+        size = -1;
+        *buffer += 1;
+    }
+    else {
+        unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
+        if (marker_high_nibble == 0x90) {
+            size = marker & 0x0F;
+            *buffer += 1;
+        }
+        else {
+            size = -2;
+        }
+    }
+    return size;
+}
+
+int64_t packstream_read_integer(char **buffer)
+{
+    int64_t value;
+    unsigned char marker = (unsigned char) *buffer[0];
+    if (marker < 128 or marker >= 240) {
+        value = marker;
+        *buffer += 1;
+    }
+    else if (marker == 0xC8 or marker == 0xC9 or marker == 0xCA or marker == 0xCB) {
+        // TODO
+        value = 0;
+    }
+    else {
+        // TODO
+        value = 0;
+    }
+    return value;
 }
 
 void packstream_read_text(const char **buffer, char *value, size_t size)

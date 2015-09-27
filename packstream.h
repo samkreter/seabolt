@@ -20,47 +20,47 @@
 #ifndef NEO4J_C_DRIVER_PACKSTREAM_H
 #define NEO4J_C_DRIVER_PACKSTREAM_H
 
-enum PackStream_Type
-{
-
-    /* Basic types */
+enum PackStream_Type {
+    PACKSTREAM_RESERVED = -1,
     PACKSTREAM_NULL = 0,
     PACKSTREAM_BOOLEAN = 1,
     PACKSTREAM_INTEGER = 2,
     PACKSTREAM_FLOAT = 3,
-    PACKSTREAM_TEXT = 4,
-    PACKSTREAM_LIST = 5,
-    PACKSTREAM_MAP = 6,
-
-    /* Structures */
-    PACKSTREAM_STRUCTURE = 7,
-    PACKSTREAM_IDENTITY = 8,
-    PACKSTREAM_NODE = 9,
-    PACKSTREAM_RELATIONSHIP = 10,
-    PACKSTREAM_PATH = 11,
-
+    PACKSTREAM_BYTES = 4,
+    PACKSTREAM_TEXT = 5,
+    PACKSTREAM_LIST = 6,
+    PACKSTREAM_MAP = 7,
+    PACKSTREAM_STRUCTURE = 8,
+    PACKSTREAM_END_OF_STREAM = 9,
 };
 
-struct PackStream_Value
-{
+struct PackStream_Value {
     PackStream_Type type;
     size_t size;
     void *value;
 };
 
-struct PackStream_Pair
-{
+struct PackStream_Pair {
     PackStream_Value name;
     PackStream_Value value;
 };
 
-void packstream_read_header(const char **buffer, PackStream_Value *header);
+static const char NEO4J_IDENTITY = 'I';
+static const char NEO4J_NODE = 'N';
+static const char NEO4J_RELATIONSHIP = 'R';
+static const char NEO4J_UNBOUND_RELATIONSHIP = 'r';
+static const char NEO4J_PATH = 'I';
 
-void packstream_read_integer(const char **buffer, int64_t *value);
+PackStream_Type packstream_next_type(const char *buffer);
+
+int32_t packstream_read_list_size(char **buffer);
+
+int64_t packstream_read_integer(char **buffer);
 
 void packstream_read_float(const char **buffer, double *value);
 
 void packstream_read_text(const char **buffer, char *value, size_t size);
+
 
 size_t packstream_write_null(char *buffer);
 

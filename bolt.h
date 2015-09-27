@@ -43,6 +43,7 @@ struct Bolt
     int message_size;
     int message_field_count;
     char message_signature;
+    char *reader;
 
     // outgoing
     char *write_buffer;

@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
     bolt_init(bolt, "c-driver/1.0");
     bolt_read_message(bolt);
 
-    for (int i = 0; i < times; i++) {
+    for (int x = 0; x < times; x++) {
         bolt_run(bolt, statement, 0, NULL);
         bolt_pull_all(bolt);
 
@@ -47,7 +47,18 @@ int main(int argc, char *argv[])
         do {
             bolt_read_message(bolt);
             if (bolt->message_signature == RECORD_MESSAGE) {
-                printf("RECORD\n");
+                PackStream_Type type = packstream_next_type(bolt->reader);
+                if (type == PACKSTREAM_LIST) {
+                    long size = packstream_read_list_size(&bolt->reader);
+                    cout << "RECORD " << size << endl;
+                    for (long i = 0; i < size; i++) {
+                        type = packstream_next_type(bolt->reader);
+                        cout << type << endl;
+                    }
+                    type = packstream_next_type(bolt->reader);
+                } else {
+                    cerr << "List expected" << endl;
+                }
             } else {
                 printf("(FOOTER)\n");
             }
