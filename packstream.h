@@ -53,13 +53,17 @@ static const char NEO4J_PATH = 'I';
 
 PackStream_Type packstream_next_type(const char *buffer);
 
-int32_t packstream_read_list_size(char **buffer);
+bool packstream_read_null(char **buffer);
 
-int64_t packstream_read_integer(char **buffer);
+bool packstream_read_boolean(char **buffer, bool *value);
 
-void packstream_read_float(const char **buffer, double *value);
+bool packstream_read_integer(char **buffer, int64_t *value);
 
-void packstream_read_text(const char **buffer, char *value, size_t size);
+bool packstream_read_float(char **buffer, double *value);
+
+bool packstream_read_list_header(char **buffer, int32_t *size);
+
+bool packstream_read_structure_header(char **buffer, int32_t *size, char *signature);
 
 
 size_t packstream_write_null(char *buffer);

@@ -76,46 +76,40 @@ PackStream_Type packstream_next_type(const char *buffer)
     return type;
 }
 
-int32_t packstream_read_list_size(char **buffer)
+bool packstream_read_null(char **buffer)
 {
-    int32_t size;
-    unsigned char marker = (unsigned char) *buffer[0];
-    if (marker == 0xD4) {
-        size = (uint8_t) *buffer[1];
-        *buffer += 2;
-    }
-    else if (marker == 0xD5) {
-        size = ((uint8_t) *buffer[1] << 8) | ((uint8_t) *buffer[2]);
-        *buffer += 3;
-    }
-    else if (marker == 0xD6) {
-        size = ((uint8_t) *buffer[1] << 24) | ((uint8_t) *buffer[2] << 16) |
-                ((uint8_t) *buffer[3] << 8) | ((uint8_t) *buffer[4]);
-        *buffer += 5;
-    }
-    else if (marker == 0xD7) {
-        size = -1;
+    unsigned char marker = (unsigned char) (*buffer)[0];
+    if (marker == 0xC0) {
         *buffer += 1;
     }
     else {
-        unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
-        if (marker_high_nibble == 0x90) {
-            size = marker & 0x0F;
-            *buffer += 1;
-        }
-        else {
-            size = -2;
-        }
+        return false;
     }
-    return size;
+    return true;
 }
 
-int64_t packstream_read_integer(char **buffer)
+bool packstream_read_boolean(char **buffer, bool *value)
 {
-    int64_t value;
-    unsigned char marker = (unsigned char) *buffer[0];
+    unsigned char marker = (unsigned char) (*buffer)[0];
+    if (marker == 0xC3) {
+        *value = true;
+        *buffer += 1;
+    }
+    else if (marker == 0xC2) {
+        *value = false;
+        *buffer += 1;
+    }
+    else {
+        return false;
+    }
+    return true;
+}
+
+bool packstream_read_integer(char **buffer, int64_t *value)
+{
+    unsigned char marker = (unsigned char) (*buffer)[0];
     if (marker < 128 or marker >= 240) {
-        value = marker;
+        *value = marker;
         *buffer += 1;
     }
     else if (marker == 0xC8 or marker == 0xC9 or marker == 0xCA or marker == 0xCB) {
@@ -123,16 +117,77 @@ int64_t packstream_read_integer(char **buffer)
         value = 0;
     }
     else {
-        // TODO
-        value = 0;
+        return false;
     }
-    return value;
+    return true;
 }
 
-void packstream_read_text(const char **buffer, char *value, size_t size)
+bool packstream_read_float(char **buffer, double *value)
 {
-    memcpy(value, buffer, size);
-    *buffer += size;
+    // TODO
+    *value = 0.0;
+    *buffer += 9;
+    return true;
+}
+
+bool packstream_read_list_header(char **buffer, int32_t *size)
+{
+    unsigned char marker = (unsigned char) (*buffer)[0];
+    if (marker == 0xD4) {
+        *size = (uint8_t) (*buffer)[1];
+        *buffer += 2;
+    }
+    else if (marker == 0xD5) {
+        *size = ((uint8_t) (*buffer)[1] << 8) | ((uint8_t) (*buffer)[2]);
+        *buffer += 3;
+    }
+    else if (marker == 0xD6) {
+        *size = ((uint8_t) (*buffer)[1] << 24) | ((uint8_t) (*buffer)[2] << 16) |
+                ((uint8_t) (*buffer)[3] << 8) | ((uint8_t) (*buffer)[4]);
+        *buffer += 5;
+    }
+    else if (marker == 0xD7) {
+        *size = -1;
+        *buffer += 1;
+    }
+    else {
+        unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
+        if (marker_high_nibble == 0x90) {
+            *size = marker & 0x0F;
+            *buffer += 1;
+        }
+        else {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool packstream_read_structure_header(char **buffer, int32_t *size, char *signature)
+{
+    unsigned char marker = (unsigned char) (*buffer)[0];
+    if (marker == 0xDC) {
+        *size = (uint8_t) (*buffer)[1];
+        *signature = (*buffer)[2];
+        *buffer += 3;
+    }
+    else if (marker == 0xDD) {
+        *size = ((uint8_t) (*buffer)[1] << 8) | ((uint8_t) (*buffer)[2]);
+        *signature = (*buffer)[3];
+        *buffer += 4;
+    }
+    else {
+        unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
+        if (marker_high_nibble == 0xB0) {
+            *size = marker & 0x0F;
+            *signature = (*buffer)[1];
+            *buffer += 2;
+        }
+        else {
+            return false;
+        }
+    }
+    return true;
 }
 
 size_t packstream_write_null(char *buffer)

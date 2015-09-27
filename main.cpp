@@ -20,7 +20,42 @@
 
 #include "bolt.h"
 
+void print_next_value(Bolt *pBolt);
+
 using namespace std;
+
+void print_next_value(Bolt *bolt)
+{
+    switch(packstream_next_type(bolt->reader))
+    {
+        case PACKSTREAM_NULL: {
+            packstream_read_null(&bolt->reader);
+            cout << "null";
+            break;
+        }
+        case PACKSTREAM_BOOLEAN: {
+            bool value;
+            packstream_read_boolean(&bolt->reader, &value);
+            cout << (value ? "true" : "false");
+            break;
+        }
+        case PACKSTREAM_INTEGER: {
+            int64_t value;
+            packstream_read_integer(&bolt->reader, &value);
+            cout << value;
+            break;
+        }
+        case PACKSTREAM_FLOAT: {
+            double value;
+            packstream_read_float(&bolt->reader, &value);
+            cout << value;
+            break;
+        }
+        default: {
+            cout << '?';
+        }
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -43,24 +78,24 @@ int main(int argc, char *argv[])
         bolt_pull_all(bolt);
 
         bolt_read_message(bolt);
-        printf("(HEADER)\n");
+        //printf("(HEADER)\n");
         do {
             bolt_read_message(bolt);
             if (bolt->message_signature == RECORD_MESSAGE) {
                 PackStream_Type type = packstream_next_type(bolt->reader);
                 if (type == PACKSTREAM_LIST) {
-                    long size = packstream_read_list_size(&bolt->reader);
-                    cout << "RECORD " << size << endl;
+                    int32_t size;
+                    packstream_read_list_header(&bolt->reader, &size);
                     for (long i = 0; i < size; i++) {
-                        type = packstream_next_type(bolt->reader);
-                        cout << type << endl;
+                        if (i > 0) cout << '\t';
+                        print_next_value(bolt);
                     }
-                    type = packstream_next_type(bolt->reader);
+                    cout << endl;
                 } else {
                     cerr << "List expected" << endl;
                 }
             } else {
-                printf("(FOOTER)\n");
+                //printf("(FOOTER)\n");
             }
         } while (bolt->message_signature == RECORD_MESSAGE);
 

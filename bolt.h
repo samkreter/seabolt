@@ -63,7 +63,7 @@ size_t bolt_read_chunk_header(Bolt *bolt);
 
 void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size);
 
-void bolt_read_message(Bolt *bolt);
+bool bolt_read_message(Bolt *bolt);
 
 Bolt *bolt_connect(const char *host, const in_port_t port);
 

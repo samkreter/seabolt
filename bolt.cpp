@@ -109,7 +109,7 @@ void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size)
     bolt_recv(bolt, bolt->read_buffer, chunk_size);
 }
 
-void bolt_read_message(Bolt *bolt)
+bool bolt_read_message(Bolt *bolt)
 {
     bolt->message_size = 0;
     size_t chunk_size;
@@ -122,9 +122,8 @@ void bolt_read_message(Bolt *bolt)
             bolt->message_size += chunk_size;
         }
     } while (chunk_size > 0);
-    bolt->message_field_count = bolt->message[0] & 0x0F;
-    bolt->message_signature = bolt->message[1];
-    bolt->reader = bolt->message + 2;
+    bolt->reader = bolt->message;
+    return packstream_read_structure_header(&bolt->reader, &bolt->message_field_count, &bolt->message_signature);
 }
 
 Bolt *bolt_connect(const char *host, const in_port_t port)
