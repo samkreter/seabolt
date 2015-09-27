@@ -51,6 +51,14 @@ void print_next_value(Bolt *bolt)
             cout << value;
             break;
         }
+        case PACKSTREAM_TEXT: {
+            size_t size;
+            char *value;
+            packstream_read_text(&bolt->reader, &size, &value);
+            // TODO: character escaping
+            cout << '"' << string(value, size) << '"';
+            break;
+        }
         default: {
             cout << '?';
         }
@@ -65,7 +73,7 @@ int main(int argc, char *argv[])
     }
 
     char *statement = argv[1];
-    unsigned int times = 1;
+    unsigned int times = 5;
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     //printf("Using protocol version %d\n", bolt->version);
@@ -99,6 +107,7 @@ int main(int argc, char *argv[])
             }
         } while (bolt->message_signature == RECORD_MESSAGE);
 
+        cout << endl;
     }
 
     bolt_disconnect(bolt);

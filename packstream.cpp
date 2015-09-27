@@ -130,6 +130,38 @@ bool packstream_read_float(char **buffer, double *value)
     return true;
 }
 
+bool packstream_read_text(char **buffer, size_t *size, char **value)
+{
+    unsigned char marker = (unsigned char) (*buffer)[0];
+    if (marker == 0xD0) {
+        *size = (uint8_t) (*buffer)[1];
+        *buffer += 2;
+    }
+    else if (marker == 0xD1) {
+        *size = ((uint8_t) (*buffer)[1] << 8) | ((uint8_t) (*buffer)[2]);
+        *buffer += 3;
+    }
+    else if (marker == 0xD2) {
+        *size = ((uint8_t) (*buffer)[1] << 24) | ((uint8_t) (*buffer)[2] << 16) |
+                ((uint8_t) (*buffer)[3] << 8) | ((uint8_t) (*buffer)[4]);
+        *buffer += 5;
+    }
+    else {
+        unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
+        if (marker_high_nibble == 0x80) {
+            *size = (size_t) (marker & 0x0F);
+            *buffer += 1;
+        }
+        else {
+            return false;
+        }
+    }
+    *value = new char[*size];
+    memcpy(*value, *buffer, (size_t) *size);
+    *buffer += *size;
+    return true;
+}
+
 bool packstream_read_list_header(char **buffer, int32_t *size)
 {
     unsigned char marker = (unsigned char) (*buffer)[0];
