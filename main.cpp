@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     //printf("Using protocol version %d\n", bolt->version);
 
-    bolt_init(bolt, "c-driver/1.0");
+    bolt_init(bolt, "seabolt/1.0");
     bolt_read_message(bolt);
 
     for (int x = 0; x < times; x++) {
