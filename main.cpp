@@ -228,11 +228,9 @@ int main(int argc, char *argv[])
                 if (bolt->message_signature == RECORD_MESSAGE) {
                     print_next_separated_list(bolt, '\t', format);
                 } else {
-                    //printf("(FOOTER)\n");
+                    cout << endl;
                 }
             } while (bolt->message_signature == RECORD_MESSAGE);
-
-            cout << endl;
         }
     }
 
