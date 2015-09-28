@@ -172,18 +172,13 @@ void print_next_value(Bolt *bolt, PrintFormat format)
 
 void print_next_separated_list(Bolt *bolt, char separator, PrintFormat format)
 {
-    PackStream_Type type = packstream_next_type(bolt->reader);
-    if (type == PACKSTREAM_LIST) {
-        int32_t size;
-        packstream_read_list_header(&bolt->reader, &size);
-        for (long i = 0; i < size; i++) {
-            if (i > 0) cout << separator;
-            print_next_value(bolt, format);
-        }
-        cout << endl;
-    } else {
-        cerr << "List expected" << endl;
+    int32_t size;
+    packstream_read_list_header(&bolt->reader, &size);
+    for (long i = 0; i < size; i++) {
+        if (i > 0) cout << separator;
+        print_next_value(bolt, format);
     }
+    cout << endl;
 }
 
 int main(int argc, char *argv[])
