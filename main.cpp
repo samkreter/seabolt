@@ -27,6 +27,46 @@ enum PrintFormat {
     JSON = 1,
 };
 
+void print_json_string(char *buffer, int32_t size)
+{
+    cout << '"';
+    for (int i = 0; i < size; i++) {
+        unsigned char ch = (unsigned char) buffer[i];
+        if (ch >= ' ' and ch <= '~') {
+            cout << buffer[i];
+        }
+        else {
+            switch (ch) {
+                case '"':
+                    cout << "\\\"";
+                    break;
+                case '\\':
+                    cout << "\\\\";
+                    break;
+                case '\b':
+                    cout << "\\b";
+                    break;
+                case '\f':
+                    cout << "\\f";
+                    break;
+                case '\n':
+                    cout << "\\n";
+                    break;
+                case '\r':
+                    cout << "\\r";
+                    break;
+                case '\t':
+                    cout << "\\t";
+                    break;
+                default:
+                    // TODO: unicode character escaping as \uXXXX
+                    cout << "\\x" << (ch < 0x10 ? "0" : "") << uppercase << hex << (int) ch;
+            }
+        }
+    }
+    cout << '"';
+}
+
 void print_next_value(Bolt *bolt, PrintFormat format)
 {
     switch (packstream_next_type(bolt->reader))
@@ -75,13 +115,12 @@ void print_next_value(Bolt *bolt, PrintFormat format)
             break;
         }
         case PACKSTREAM_TEXT: {
-            size_t size;
+            int32_t size;
             char *value;
             packstream_read_text(&bolt->reader, &size, &value);
             switch (format) {
                 case JSON:
-                    // TODO: character escaping
-                    cout << '"' << string(value, size) << '"';
+                    print_json_string(value, size);
                 default:
                     ;
             }
@@ -100,6 +139,26 @@ void print_next_value(Bolt *bolt, PrintFormat format)
                         print_next_value(bolt, format);
                     }
                     cout << ']';
+                default:
+                    ;
+            }
+            break;
+        }
+        case PACKSTREAM_MAP: {
+            int32_t size;
+            packstream_read_map_header(&bolt->reader, &size);
+            switch (format) {
+                case JSON:
+                    cout << '{';
+                    for (int i = 0; i < size; i++) {
+                        if (i > 0) {
+                            cout << ", ";
+                        }
+                        print_next_value(bolt, format);
+                        cout << ": ";
+                        print_next_value(bolt, format);
+                    }
+                    cout << '}';
                 default:
                     ;
             }
@@ -135,6 +194,7 @@ int main(int argc, char *argv[])
     }
 
     unsigned int times = 5;
+    PrintFormat format = JSON;
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     //printf("Using protocol version %d\n", bolt->version);
@@ -154,11 +214,11 @@ int main(int argc, char *argv[])
                 int32_t size;
                 packstream_read_map_header(&bolt->reader, &size);
                 for (long i = 0; i < size; i++) {
-                    size_t key_size;
+                    int32_t key_size;
                     char *key;
                     packstream_read_text(&bolt->reader, &key_size, &key);
                     if (key_size == 6 and strcmp(key, "fields") == 0) {
-                        print_next_separated_list(bolt, '\t', JSON);
+                        print_next_separated_list(bolt, '\t', format);
                     }
                     else {
                         print_next_value(bolt, NONE);
@@ -171,7 +231,7 @@ int main(int argc, char *argv[])
             do {
                 bolt_read_message(bolt);
                 if (bolt->message_signature == RECORD_MESSAGE) {
-                    print_next_separated_list(bolt, '\t', JSON);
+                    print_next_separated_list(bolt, '\t', format);
                 } else {
                     //printf("(FOOTER)\n");
                 }

@@ -61,7 +61,7 @@ bool packstream_read_integer(char **buffer, int64_t *value);
 
 bool packstream_read_float(char **buffer, double *value);
 
-bool packstream_read_text(char **buffer, size_t *size, char **value);
+bool packstream_read_text(char **buffer, int32_t *size, char **value);
 
 bool packstream_read_list_header(char **buffer, int32_t *size);
 

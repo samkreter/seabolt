@@ -130,7 +130,7 @@ bool packstream_read_float(char **buffer, double *value)
     return true;
 }
 
-bool packstream_read_text(char **buffer, size_t *size, char **value)
+bool packstream_read_text(char **buffer, int32_t *size, char **value)
 {
     unsigned char marker = (unsigned char) (*buffer)[0];
     if (marker == 0xD0) {
@@ -149,7 +149,7 @@ bool packstream_read_text(char **buffer, size_t *size, char **value)
     else {
         unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
         if (marker_high_nibble == 0x80) {
-            *size = (size_t) (marker & 0x0F);
+            *size = (int32_t) (marker & 0x0F);
             *buffer += 1;
         }
         else {
