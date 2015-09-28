@@ -20,48 +20,110 @@
 
 #include "bolt.h"
 
-void print_next_value(Bolt *pBolt);
-
 using namespace std;
 
-void print_next_value(Bolt *bolt)
+enum PrintFormat {
+    NONE = 0,
+    JSON = 1,
+};
+
+void print_next_value(Bolt *bolt, PrintFormat format)
 {
-    switch(packstream_next_type(bolt->reader))
+    switch (packstream_next_type(bolt->reader))
     {
         case PACKSTREAM_NULL: {
             packstream_read_null(&bolt->reader);
-            cout << "null";
+            switch (format) {
+                case JSON:
+                    cout << "null";
+                default:
+                    ;
+            }
             break;
         }
         case PACKSTREAM_BOOLEAN: {
             bool value;
             packstream_read_boolean(&bolt->reader, &value);
-            cout << (value ? "true" : "false");
+            switch (format) {
+                case JSON:
+                    cout << (value ? "true" : "false");
+                default:
+                    ;
+            }
             break;
         }
         case PACKSTREAM_INTEGER: {
             int64_t value;
             packstream_read_integer(&bolt->reader, &value);
-            cout << value;
+            switch (format) {
+                case JSON:
+                    cout << value;
+                default:
+                    ;
+            }
             break;
         }
         case PACKSTREAM_FLOAT: {
             double value;
             packstream_read_float(&bolt->reader, &value);
-            cout << value;
+            switch (format) {
+                case JSON:
+                    cout << value;
+                default:
+                    ;
+            }
             break;
         }
         case PACKSTREAM_TEXT: {
             size_t size;
             char *value;
             packstream_read_text(&bolt->reader, &size, &value);
-            // TODO: character escaping
-            cout << '"' << string(value, size) << '"';
+            switch (format) {
+                case JSON:
+                    // TODO: character escaping
+                    cout << '"' << string(value, size) << '"';
+                default:
+                    ;
+            }
+            break;
+        }
+        case PACKSTREAM_LIST: {
+            int32_t size;
+            packstream_read_list_header(&bolt->reader, &size);
+            switch (format) {
+                case JSON:
+                    cout << '[';
+                    for (int i = 0; i < size; i++) {
+                        if (i > 0) {
+                            cout << ", ";
+                        }
+                        print_next_value(bolt, format);
+                    }
+                    cout << ']';
+                default:
+                    ;
+            }
             break;
         }
         default: {
             cout << '?';
         }
+    }
+}
+
+void print_next_separated_list(Bolt *bolt, char separator, PrintFormat format)
+{
+    PackStream_Type type = packstream_next_type(bolt->reader);
+    if (type == PACKSTREAM_LIST) {
+        int32_t size;
+        packstream_read_list_header(&bolt->reader, &size);
+        for (long i = 0; i < size; i++) {
+            if (i > 0) cout << separator;
+            print_next_value(bolt, format);
+        }
+        cout << endl;
+    } else {
+        cerr << "List expected" << endl;
     }
 }
 
@@ -72,7 +134,6 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    char *statement = argv[1];
     unsigned int times = 5;
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
@@ -82,32 +143,42 @@ int main(int argc, char *argv[])
     bolt_read_message(bolt);
 
     for (int x = 0; x < times; x++) {
-        bolt_run(bolt, statement, 0, NULL);
-        bolt_pull_all(bolt);
+        for(int arg = 1; arg < argc; arg++) {
+            bolt_run(bolt, argv[arg], 0, NULL);
+            bolt_pull_all(bolt);
 
-        bolt_read_message(bolt);
-        //printf("(HEADER)\n");
-        do {
+            // Header
             bolt_read_message(bolt);
-            if (bolt->message_signature == RECORD_MESSAGE) {
-                PackStream_Type type = packstream_next_type(bolt->reader);
-                if (type == PACKSTREAM_LIST) {
-                    int32_t size;
-                    packstream_read_list_header(&bolt->reader, &size);
-                    for (long i = 0; i < size; i++) {
-                        if (i > 0) cout << '\t';
-                        print_next_value(bolt);
+            PackStream_Type type = packstream_next_type(bolt->reader);
+            if (type == PACKSTREAM_MAP) {
+                int32_t size;
+                packstream_read_map_header(&bolt->reader, &size);
+                for (long i = 0; i < size; i++) {
+                    size_t key_size;
+                    char *key;
+                    packstream_read_text(&bolt->reader, &key_size, &key);
+                    if (key_size == 6 and strcmp(key, "fields") == 0) {
+                        print_next_separated_list(bolt, '\t', JSON);
                     }
-                    cout << endl;
-                } else {
-                    cerr << "List expected" << endl;
+                    else {
+                        print_next_value(bolt, NONE);
+                    }
                 }
             } else {
-                //printf("(FOOTER)\n");
+                cerr << "Map expected" << endl;
             }
-        } while (bolt->message_signature == RECORD_MESSAGE);
 
-        cout << endl;
+            do {
+                bolt_read_message(bolt);
+                if (bolt->message_signature == RECORD_MESSAGE) {
+                    print_next_separated_list(bolt, '\t', JSON);
+                } else {
+                    //printf("(FOOTER)\n");
+                }
+            } while (bolt->message_signature == RECORD_MESSAGE);
+
+            cout << endl;
+        }
     }
 
     bolt_disconnect(bolt);

@@ -65,6 +65,8 @@ bool packstream_read_text(char **buffer, size_t *size, char **value);
 
 bool packstream_read_list_header(char **buffer, int32_t *size);
 
+bool packstream_read_map_header(char **buffer, int32_t *size);
+
 bool packstream_read_structure_header(char **buffer, int32_t *size, char *signature);
 
 

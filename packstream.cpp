@@ -195,6 +195,39 @@ bool packstream_read_list_header(char **buffer, int32_t *size)
     return true;
 }
 
+bool packstream_read_map_header(char **buffer, int32_t *size)
+{
+    unsigned char marker = (unsigned char) (*buffer)[0];
+    if (marker == 0xD8) {
+        *size = (uint8_t) (*buffer)[1];
+        *buffer += 2;
+    }
+    else if (marker == 0xD9) {
+        *size = ((uint8_t) (*buffer)[1] << 8) | ((uint8_t) (*buffer)[2]);
+        *buffer += 3;
+    }
+    else if (marker == 0xDA) {
+        *size = ((uint8_t) (*buffer)[1] << 24) | ((uint8_t) (*buffer)[2] << 16) |
+                ((uint8_t) (*buffer)[3] << 8) | ((uint8_t) (*buffer)[4]);
+        *buffer += 5;
+    }
+    else if (marker == 0xDB) {
+        *size = -1;
+        *buffer += 1;
+    }
+    else {
+        unsigned char marker_high_nibble = (unsigned char) (marker & 0xF0);
+        if (marker_high_nibble == 0xA0) {
+            *size = marker & 0x0F;
+            *buffer += 1;
+        }
+        else {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool packstream_read_structure_header(char **buffer, int32_t *size, char *signature)
 {
     unsigned char marker = (unsigned char) (*buffer)[0];
