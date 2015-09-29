@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    unsigned int times = 5;
+    unsigned int times = 1;
     PrintFormat format = JSON;
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
