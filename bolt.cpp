@@ -43,39 +43,48 @@ void dump(const char *buffer, ssize_t size)
 
 void bolt_reset_writer(Bolt *bolt)
 {
-    bolt->writer = bolt->write_buffer + 2;
+    bolt->writer = bolt->write_buffer;
 }
 
-ssize_t bolt_send(Bolt *bolt, const char *buffer, size_t size)
+void bolt_start_chunk(Bolt *bolt)
+{
+    bolt->start_of_chunk = bolt->writer;
+    bolt->writer += 2;
+}
+
+void bolt_end_chunk(Bolt *bolt)
+{
+    size_t send_size = bolt->writer - bolt->start_of_chunk;
+    size_t chunk_size = send_size - 2;
+    char chunk_header[] = {(char) (chunk_size >> 8), (char) (chunk_size & 0xFF)};
+    memcpy(bolt->start_of_chunk, chunk_header, 2);
+}
+
+void bolt_end_message(Bolt *bolt)
+{
+    memcpy(bolt->writer, END_OF_MESSAGE, 2);
+    bolt->writer += 2;
+}
+
+ssize_t bolt_send_data(Bolt *bolt, const char *buffer, size_t size)
 {
     ssize_t sent = send(bolt->socket, buffer, size, 0);
-    //cerr << "C: "; dump(buffer, size);
+    cerr << "C: "; dump(buffer, size);
     return sent;
 }
 
-void bolt_send_chunk(Bolt *bolt)
+// Send all queued messages
+ssize_t bolt_send(Bolt *bolt)
 {
-    size_t send_size = bolt->writer - bolt->write_buffer;
-    size_t chunk_size = send_size - 2;
-    char chunk_header[] = {(char) (chunk_size >> 8), (char) (chunk_size & 0xFF)};
-    memcpy(bolt->write_buffer, chunk_header, 2);
-    bolt_send(bolt, bolt->write_buffer, send_size);
+    ssize_t size = bolt_send_data(bolt, bolt->write_buffer, bolt->writer - bolt->write_buffer);
+    bolt_reset_writer(bolt);
+    return size;
 }
 
-void bolt_send_message(Bolt *bolt)
-{
-    size_t send_size = bolt->writer - bolt->write_buffer;
-    size_t chunk_size = send_size - 2;
-    char chunk_header[] = {(char) (chunk_size >> 8), (char) (chunk_size & 0xFF)};
-    memcpy(bolt->write_buffer, chunk_header, 2);
-    memcpy(bolt->writer, END_OF_MESSAGE, 2);
-    bolt_send(bolt, bolt->write_buffer, send_size + 2);
-}
-
-ssize_t bolt_recv(Bolt *bolt, void *buffer, size_t size)
+ssize_t bolt_recv_data(Bolt *bolt, void *buffer, size_t size)
 {
     ssize_t received = recv(bolt->socket, buffer, size, 0);
-    //cerr << "S: "; dump((char *) buffer, size);
+    cerr << "S: "; dump((char *) buffer, size);
     return received;
 }
 
@@ -83,7 +92,7 @@ uint32_t bolt_recv_uint32(Bolt *bolt)
 {
     unsigned char buffer[4];
 
-    ssize_t received = bolt_recv(bolt, buffer, sizeof(buffer));
+    ssize_t received = bolt_recv_data(bolt, buffer, sizeof(buffer));
     if (received < 0) {
         puts("recv failed");
     }
@@ -96,7 +105,7 @@ size_t bolt_read_chunk_header(Bolt *bolt)
 {
     char buffer[2];
 
-    ssize_t received = bolt_recv(bolt, buffer, sizeof(buffer));
+    ssize_t received = bolt_recv_data(bolt, buffer, sizeof(buffer));
     if (received < 0) {
         puts("recv failed");
     }
@@ -106,10 +115,11 @@ size_t bolt_read_chunk_header(Bolt *bolt)
 
 void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size)
 {
-    bolt_recv(bolt, bolt->read_buffer, chunk_size);
+    bolt_recv_data(bolt, bolt->read_buffer, chunk_size);
 }
 
-bool bolt_read_message(Bolt *bolt)
+// Receive the next message
+bool bolt_recv(Bolt *bolt)
 {
     bolt->message_size = 0;
     size_t chunk_size;
@@ -156,8 +166,10 @@ Bolt *bolt_connect(const char *host, const in_port_t port)
     }
 
     // Perform handshake
-    bolt_send(bolt, "\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+    bolt_send_data(bolt, "\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
     bolt->version = bolt_recv_uint32(bolt);
+
+    bolt_reset_writer(bolt);
 
     return bolt;
 }
@@ -169,24 +181,27 @@ void bolt_disconnect(Bolt *bolt)
 
 void bolt_init(Bolt *bolt, const char *user_agent)
 {
-    bolt_reset_writer(bolt);
+    bolt_start_chunk(bolt);
     packstream_write_struct_header(&bolt->writer, 1, INIT_MESSAGE);
     packstream_write_text(&bolt->writer, strlen(user_agent), user_agent);
-    bolt_send_message(bolt);
+    bolt_end_chunk(bolt);
+    bolt_end_message(bolt);
 }
 
 void bolt_run(Bolt *bolt, const char *statement, size_t parameter_count, PackStream_Pair *parameters)
 {
-    bolt_reset_writer(bolt);
+    bolt_start_chunk(bolt);
     packstream_write_struct_header(&bolt->writer, 2, RUN_MESSAGE);
     packstream_write_text(&bolt->writer, strlen(statement), statement);
     packstream_write_map(&bolt->writer, parameter_count, parameters);
-    bolt_send_message(bolt);
+    bolt_end_chunk(bolt);
+    bolt_end_message(bolt);
 }
 
 void bolt_pull_all(Bolt *bolt)
 {
-    bolt_reset_writer(bolt);
+    bolt_start_chunk(bolt);
     packstream_write_struct_header(&bolt->writer, 0, PULL_ALL_MESSAGE);
-    bolt_send_message(bolt);
+    bolt_end_chunk(bolt);
+    bolt_end_message(bolt);
 }

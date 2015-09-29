@@ -188,22 +188,24 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    unsigned int times = 1;
+    unsigned int times = 3;
     PrintFormat format = JSON;
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     //printf("Using protocol version %d\n", bolt->version);
 
     bolt_init(bolt, "seabolt/1.0");
-    bolt_read_message(bolt);
+    bolt_send(bolt);
+    bolt_recv(bolt);
 
     for (int x = 0; x < times; x++) {
         for(int arg = 1; arg < argc; arg++) {
             bolt_run(bolt, argv[arg], 0, NULL);
             bolt_pull_all(bolt);
+            bolt_send(bolt);
 
             // Header
-            bolt_read_message(bolt);
+            bolt_recv(bolt);
             PackStream_Type type = packstream_next_type(bolt->reader);
             if (type == PACKSTREAM_MAP) {
                 int32_t size;
@@ -224,7 +226,7 @@ int main(int argc, char *argv[])
             }
 
             do {
-                bolt_read_message(bolt);
+                bolt_recv(bolt);
                 if (bolt->message_signature == RECORD_MESSAGE) {
                     print_next_separated_list(bolt, '\t', format);
                 } else {

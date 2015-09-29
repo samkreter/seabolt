@@ -47,15 +47,12 @@ struct Bolt
 
     // outgoing
     char *write_buffer;
+    char *start_of_chunk;
     char *writer;
 
 };
 
-void bolt_reset_writer(Bolt *bolt);
-
-void bolt_send_chunk(Bolt *bolt);
-
-void bolt_send_message(Bolt *bolt);
+ssize_t bolt_send(Bolt *bolt);
 
 uint32_t bolt_recv_uint32(Bolt *bolt);
 
@@ -63,7 +60,7 @@ size_t bolt_read_chunk_header(Bolt *bolt);
 
 void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size);
 
-bool bolt_read_message(Bolt *bolt);
+bool bolt_recv(Bolt *bolt);
 
 Bolt *bolt_connect(const char *host, const in_port_t port);
 
