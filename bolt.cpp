@@ -69,7 +69,7 @@ void bolt_end_message(Bolt *bolt)
 ssize_t bolt_send_data(Bolt *bolt, const char *buffer, size_t size)
 {
     ssize_t sent = send(bolt->socket, buffer, size, 0);
-    cerr << "C: "; dump(buffer, size);
+    //cerr << "C: "; dump(buffer, size);
     return sent;
 }
 
@@ -84,7 +84,7 @@ ssize_t bolt_send(Bolt *bolt)
 ssize_t bolt_recv_data(Bolt *bolt, void *buffer, size_t size)
 {
     ssize_t received = recv(bolt->socket, buffer, size, 0);
-    cerr << "S: "; dump((char *) buffer, size);
+    //cerr << "S: "; dump((char *) buffer, size);
     return received;
 }
 

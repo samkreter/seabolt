@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <string.h>
 #include <arpa/inet.h>
@@ -175,21 +177,83 @@ void print_next_separated_list(Bolt *bolt, char separator, PrintFormat format)
     int32_t size;
     packstream_read_list_header(&bolt->reader, &size);
     for (long i = 0; i < size; i++) {
-        if (i > 0) cout << separator;
+        if (i > 0 and format != NONE) cout << separator;
         print_next_value(bolt, format);
     }
-    cout << endl;
+    if (format != NONE) cout << endl;
 }
 
-int main(int argc, char *argv[])
+int print_help(int argc, char *argv[])
 {
-    if (argc < 2) {
-        puts("usage: ...");
-        exit(0);
+    puts("usage: ...");
+    return 0;
+}
+
+int run(const char *statement, size_t parameter_count, PackStream_Pair *parameters, PrintFormat format)
+{
+    Bolt *bolt = bolt_connect("127.0.0.1", 7687);
+    //printf("Using protocol version %d\n", bolt->version);
+
+    bolt_init(bolt, "seabolt/1.0");
+    bolt_send(bolt);
+    bolt_recv(bolt);
+
+    bolt_run(bolt, statement, parameter_count, parameters);
+    bolt_pull_all(bolt);
+    bolt_send(bolt);
+
+    // Header
+    bolt_recv(bolt);
+    PackStream_Type type = packstream_next_type(bolt->reader);
+    if (type == PACKSTREAM_MAP) {
+        int32_t size;
+        packstream_read_map_header(&bolt->reader, &size);
+        for (long i = 0; i < size; i++) {
+            int32_t key_size;
+            char *key;
+            packstream_read_text(&bolt->reader, &key_size, &key);
+            if (strcmp(key, "fields") == 0) {
+                print_next_separated_list(bolt, '\t', format);
+            }
+            else {
+                print_next_value(bolt, NONE);
+            }
+        }
+    } else {
+        cerr << "Map expected" << endl;
     }
 
-    unsigned int times = 3;
-    PrintFormat format = JSON;
+    do {
+        bolt_recv(bolt);
+        if (bolt->message_signature == RECORD_MESSAGE) {
+            print_next_separated_list(bolt, '\t', format);
+        } else {
+            cout << endl;
+        }
+    } while (bolt->message_signature == RECORD_MESSAGE);
+
+    bolt_disconnect(bolt);
+
+    return 0;
+}
+
+int bench(const char *statement, size_t parameter_count, PackStream_Pair *parameters, unsigned int times)
+{
+    using namespace chrono;
+
+    typedef time_point<high_resolution_clock> Time;
+
+    struct Tracker
+    {
+        Time init;
+        Time req_prepared;
+        Time req_sent;
+        Time run_complete;
+        Time pull_complete;
+    };
+
+    system_clock clock = high_resolution_clock();
+    Tracker * checkpoints = new Tracker[times];
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     //printf("Using protocol version %d\n", bolt->version);
@@ -198,45 +262,100 @@ int main(int argc, char *argv[])
     bolt_send(bolt);
     bolt_recv(bolt);
 
-    for (int x = 0; x < times; x++) {
-        for(int arg = 1; arg < argc; arg++) {
-            bolt_run(bolt, argv[arg], 0, NULL);
-            bolt_pull_all(bolt);
-            bolt_send(bolt);
+    Time t0 = high_resolution_clock::now();
+    for (unsigned int x = 0; x < times; x++) {
+        checkpoints[x].init = high_resolution_clock::now();
 
-            // Header
-            bolt_recv(bolt);
-            PackStream_Type type = packstream_next_type(bolt->reader);
-            if (type == PACKSTREAM_MAP) {
-                int32_t size;
-                packstream_read_map_header(&bolt->reader, &size);
-                for (long i = 0; i < size; i++) {
-                    int32_t key_size;
-                    char *key;
-                    packstream_read_text(&bolt->reader, &key_size, &key);
-                    if (key_size == 6 and strcmp(key, "fields") == 0) {
-                        print_next_separated_list(bolt, '\t', format);
-                    }
-                    else {
-                        print_next_value(bolt, NONE);
-                    }
+        bolt_run(bolt, statement, parameter_count, parameters);
+        bolt_pull_all(bolt);
+        checkpoints[x].req_prepared = high_resolution_clock::now();
+
+        bolt_send(bolt);
+        checkpoints[x].req_sent = high_resolution_clock::now();
+
+        // Header
+        bolt_recv(bolt);
+        checkpoints[x].run_complete = high_resolution_clock::now();
+
+        PackStream_Type type = packstream_next_type(bolt->reader);
+        if (type == PACKSTREAM_MAP) {
+            int32_t size;
+            packstream_read_map_header(&bolt->reader, &size);
+            for (long i = 0; i < size; i++) {
+                int32_t key_size;
+                char *key;
+                packstream_read_text(&bolt->reader, &key_size, &key);
+                if (strcmp(key, "fields") == 0) {
+                    print_next_separated_list(bolt, '\t', NONE);
                 }
-            } else {
-                cerr << "Map expected" << endl;
+                else {
+                    print_next_value(bolt, NONE);
+                }
             }
-
-            do {
-                bolt_recv(bolt);
-                if (bolt->message_signature == RECORD_MESSAGE) {
-                    print_next_separated_list(bolt, '\t', format);
-                } else {
-                    cout << endl;
-                }
-            } while (bolt->message_signature == RECORD_MESSAGE);
+        } else {
+            cerr << "Map expected" << endl;
         }
+
+        do {
+            bolt_recv(bolt);
+            if (bolt->message_signature == RECORD_MESSAGE) {
+                print_next_separated_list(bolt, '\t', NONE);
+            }
+        } while (bolt->message_signature == RECORD_MESSAGE);
+        checkpoints[x].pull_complete = high_resolution_clock::now();
+
+    }
+    Time t1 = high_resolution_clock::now();
+
+    double tx_per_sec = times / duration_cast<duration<double>>(t1 - t0).count();
+    cout << tx_per_sec << " tx/sec" << endl;
+
+    duration<double> overall_durations[times];
+    duration<double> network_durations[times];
+    duration<double> wait_durations[times];
+    for (unsigned int x = 0; x < times; x++)
+    {
+        overall_durations[x] = duration_cast<duration<double>>(checkpoints[x].pull_complete - checkpoints[x].init);
+        network_durations[x] = duration_cast<duration<double>>(checkpoints[x].pull_complete - checkpoints[x].req_prepared);
+        wait_durations[x] = duration_cast<duration<double>>(checkpoints[x].run_complete - checkpoints[x].req_sent);
+    }
+    sort(overall_durations, overall_durations + times);
+    sort(network_durations, network_durations + times);
+    sort(wait_durations, wait_durations + times);
+
+    double percentiles[] = {0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0,
+                            80.0, 90.0, 95.0, 98.0, 99.0, 99.5, 99.9, 100.0};
+    for (int i = 0; i < 16; i++) {
+        double percentile = percentiles[i];
+        unsigned int index = (unsigned int) floor(percentile * (times - 1) / 100.0);
+        double overall = overall_durations[index].count();
+        double network = network_durations[index].count();
+        double wait = wait_durations[index].count();
+        printf(" %9.1f%% | %9.1fµs | %9.1fµs | %9.1fµs |\n",
+               percentile, 1000000.0 * overall, 1000000.0 * network, 1000000.0 * wait);
     }
 
     bolt_disconnect(bolt);
 
     return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 2) {
+        exit(print_help(argc, argv));
+    }
+
+    char * command = argv[1];
+    if (strcmp(command, "run") == 0) {
+        exit(run(argv[2], 0, NULL, JSON));
+    }
+    else if (strcmp(command, "bench") == 0) {
+        exit(bench(argv[2], 0, NULL, 100000));
+    }
+    else {
+        cout << "Unknown command '" << command << '\'' << endl;
+        exit(1);
+    }
+
 }
