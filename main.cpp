@@ -23,6 +23,18 @@
 #include "bolt.h"
 
 using namespace std;
+using namespace chrono;
+
+typedef time_point<high_resolution_clock> Time;
+
+struct TimeSet
+{
+    Time init;
+    Time req_prepared;
+    Time req_sent;
+    Time run_complete;
+    Time pull_complete;
+};
 
 enum PrintFormat {
     NONE = 0,
@@ -237,23 +249,57 @@ int run(const char *statement, size_t parameter_count, PackStream_Pair *paramete
     return 0;
 }
 
+TimeSet bench_one(Bolt * bolt, const char *statement, size_t parameter_count, PackStream_Pair *parameters)
+{
+    TimeSet times;
+    times.init = high_resolution_clock::now();
+
+    bolt_run(bolt, statement, parameter_count, parameters);
+    bolt_pull_all(bolt);
+    times.req_prepared = high_resolution_clock::now();
+
+    bolt_send(bolt);
+    times.req_sent = high_resolution_clock::now();
+
+    // Header
+    bolt_recv(bolt);
+    times.run_complete = high_resolution_clock::now();
+
+    PackStream_Type type = packstream_next_type(bolt->reader);
+    if (type == PACKSTREAM_MAP) {
+        int32_t size;
+        packstream_read_map_header(&bolt->reader, &size);
+        for (long i = 0; i < size; i++) {
+            int32_t key_size;
+            char *key;
+            packstream_read_text(&bolt->reader, &key_size, &key);
+            if (strcmp(key, "fields") == 0) {
+                print_next_separated_list(bolt, '\t', NONE);
+            }
+            else {
+                print_next_value(bolt, NONE);
+            }
+        }
+    } else {
+        cerr << "Map expected" << endl;
+    }
+
+    do {
+        bolt_recv(bolt);
+        if (bolt->message_signature == RECORD_MESSAGE) {
+            print_next_separated_list(bolt, '\t', NONE);
+        }
+    } while (bolt->message_signature == RECORD_MESSAGE);
+    times.pull_complete = high_resolution_clock::now();
+
+    return times;
+}
+
 int bench(const char *statement, size_t parameter_count, PackStream_Pair *parameters, unsigned int times)
 {
-    using namespace chrono;
-
-    typedef time_point<high_resolution_clock> Time;
-
-    struct Tracker
-    {
-        Time init;
-        Time req_prepared;
-        Time req_sent;
-        Time run_complete;
-        Time pull_complete;
-    };
 
     system_clock clock = high_resolution_clock();
-    Tracker * checkpoints = new Tracker[times];
+    TimeSet * checkpoints = new TimeSet[times];
 
     Bolt *bolt = bolt_connect("127.0.0.1", 7687);
     //printf("Using protocol version %d\n", bolt->version);
@@ -264,46 +310,7 @@ int bench(const char *statement, size_t parameter_count, PackStream_Pair *parame
 
     Time t0 = high_resolution_clock::now();
     for (unsigned int x = 0; x < times; x++) {
-        checkpoints[x].init = high_resolution_clock::now();
-
-        bolt_run(bolt, statement, parameter_count, parameters);
-        bolt_pull_all(bolt);
-        checkpoints[x].req_prepared = high_resolution_clock::now();
-
-        bolt_send(bolt);
-        checkpoints[x].req_sent = high_resolution_clock::now();
-
-        // Header
-        bolt_recv(bolt);
-        checkpoints[x].run_complete = high_resolution_clock::now();
-
-        PackStream_Type type = packstream_next_type(bolt->reader);
-        if (type == PACKSTREAM_MAP) {
-            int32_t size;
-            packstream_read_map_header(&bolt->reader, &size);
-            for (long i = 0; i < size; i++) {
-                int32_t key_size;
-                char *key;
-                packstream_read_text(&bolt->reader, &key_size, &key);
-                if (strcmp(key, "fields") == 0) {
-                    print_next_separated_list(bolt, '\t', NONE);
-                }
-                else {
-                    print_next_value(bolt, NONE);
-                }
-            }
-        } else {
-            cerr << "Map expected" << endl;
-        }
-
-        do {
-            bolt_recv(bolt);
-            if (bolt->message_signature == RECORD_MESSAGE) {
-                print_next_separated_list(bolt, '\t', NONE);
-            }
-        } while (bolt->message_signature == RECORD_MESSAGE);
-        checkpoints[x].pull_complete = high_resolution_clock::now();
-
+        checkpoints[x] = bench_one(bolt, statement, parameter_count, parameters);
     }
     Time t1 = high_resolution_clock::now();
 
