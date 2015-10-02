@@ -32,8 +32,9 @@ struct TimeSet
     Time init;
     Time req_prepared;
     Time req_sent;
-    Time run_complete;
-    Time pull_complete;
+    Time run_summary_received;
+    Time pull_summary_received;
+    Time done;
 };
 
 enum PrintFormat {
@@ -252,20 +253,25 @@ int run(const char *statement, size_t parameter_count, PackStream_Pair *paramete
 TimeSet bench_one(Bolt * bolt, const char *statement, size_t parameter_count, PackStream_Pair *parameters)
 {
     TimeSet times;
+    PackStream_Type type;
+    
     times.init = high_resolution_clock::now();
 
+    // Prepare RUN/PULL_ALL request
     bolt_run(bolt, statement, parameter_count, parameters);
     bolt_pull_all(bolt);
     times.req_prepared = high_resolution_clock::now();
 
+    // Send RUN/PULL_ALL request
     bolt_send(bolt);
     times.req_sent = high_resolution_clock::now();
 
-    // Header
+    // Receive RUN summary
     bolt_recv(bolt);
-    times.run_complete = high_resolution_clock::now();
+    times.run_summary_received = high_resolution_clock::now();
 
-    PackStream_Type type = packstream_next_type(bolt->reader);
+    // Parse RUN summary
+    type = packstream_next_type(bolt->reader);
     if (type == PACKSTREAM_MAP) {
         int32_t size;
         packstream_read_map_header(&bolt->reader, &size);
@@ -284,14 +290,32 @@ TimeSet bench_one(Bolt * bolt, const char *statement, size_t parameter_count, Pa
         cerr << "Map expected" << endl;
     }
 
+    // Receive and parse PULL_ALL detail
     do {
         bolt_recv(bolt);
         if (bolt->message_signature == RECORD_MESSAGE) {
             print_next_separated_list(bolt, '\t', NONE);
         }
     } while (bolt->message_signature == RECORD_MESSAGE);
-    times.pull_complete = high_resolution_clock::now();
+    times.pull_summary_received = high_resolution_clock::now();
 
+    // Parse PULL_ALL summary
+    type = packstream_next_type(bolt->reader);
+    if (type == PACKSTREAM_MAP) {
+        int32_t size;
+        packstream_read_map_header(&bolt->reader, &size);
+        for (long i = 0; i < size; i++) {
+            int32_t key_size;
+            char *key;
+            packstream_read_text(&bolt->reader, &key_size, &key);
+            print_next_value(bolt, NONE);
+        }
+    } else {
+        cerr << "Map expected" << endl;
+    }
+    
+    times.done = high_resolution_clock::now();
+    
     return times;
 }
 
@@ -320,15 +344,26 @@ int bench(const char *statement, size_t parameter_count, PackStream_Pair *parame
     duration<double> overall_durations[times];
     duration<double> network_durations[times];
     duration<double> wait_durations[times];
+
+    duration<double> network_overhead;
+    duration<double> driver_overhead;
+
     for (unsigned int x = 0; x < times; x++)
     {
-        overall_durations[x] = duration_cast<duration<double>>(checkpoints[x].pull_complete - checkpoints[x].init);
-        network_durations[x] = duration_cast<duration<double>>(checkpoints[x].pull_complete - checkpoints[x].req_prepared);
-        wait_durations[x] = duration_cast<duration<double>>(checkpoints[x].run_complete - checkpoints[x].req_sent);
+        overall_durations[x] = duration_cast<duration<double>>(checkpoints[x].done - checkpoints[x].init);
+        network_durations[x] = duration_cast<duration<double>>(checkpoints[x].pull_summary_received - checkpoints[x].req_prepared);
+        wait_durations[x] = duration_cast<duration<double>>(checkpoints[x].run_summary_received - checkpoints[x].req_sent);
+
+        network_overhead += network_durations[x] - wait_durations[x];
+        driver_overhead += overall_durations[x] - network_durations[x];
     }
+
     sort(overall_durations, overall_durations + times);
     sort(network_durations, network_durations + times);
     sort(wait_durations, wait_durations + times);
+
+    network_overhead /= times;
+    driver_overhead /= times;
 
     double percentiles[] = {0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0,
                             80.0, 90.0, 95.0, 98.0, 99.0, 99.5, 99.9, 100.0};
@@ -341,6 +376,10 @@ int bench(const char *statement, size_t parameter_count, PackStream_Pair *parame
         printf(" %9.1f%% | %9.1fµs | %9.1fµs | %9.1fµs |\n",
                percentile, 1000000.0 * overall, 1000000.0 * network, 1000000.0 * wait);
     }
+
+    cout << endl;
+    printf("Mean network overhead = %2.1fµs\n", 1000000.0 * network_overhead.count());
+    printf("Mean driver overhead = %2.1fns\n", 1000000000.0 * driver_overhead.count());
 
     bolt_disconnect(bolt);
 
