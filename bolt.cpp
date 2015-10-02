@@ -54,15 +54,15 @@ void bolt_start_chunk(Bolt *bolt)
 
 void bolt_end_chunk(Bolt *bolt)
 {
-    size_t send_size = bolt->writer - bolt->start_of_chunk;
-    size_t chunk_size = send_size - 2;
-    char chunk_header[] = {(char) (chunk_size >> 8), (char) (chunk_size & 0xFF)};
-    memcpy(bolt->start_of_chunk, chunk_header, 2);
+    size_t chunk_size = bolt->writer - bolt->start_of_chunk - 2;
+    bolt->start_of_chunk[0] = (char) (chunk_size >> 8);
+    bolt->start_of_chunk[1] = (char) (chunk_size & 0xFF);
 }
 
 void bolt_end_message(Bolt *bolt)
 {
-    memcpy(bolt->writer, END_OF_MESSAGE, 2);
+    bolt->writer[0] = (char) 0x00;
+    bolt->writer[1] = (char) 0x00;
     bolt->writer += 2;
 }
 

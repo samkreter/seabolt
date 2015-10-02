@@ -20,7 +20,6 @@
 #include "packstream.h"
 
 static const ssize_t INITIAL_BUFFER_SIZE = 65535;
-static const char *END_OF_MESSAGE[] = {0x00, 0x00};
 
 static const char INIT_MESSAGE = 0x01;
 static const char RUN_MESSAGE = 0x10;
