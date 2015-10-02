@@ -19,8 +19,7 @@
 
 #include "packstream.h"
 
-static const ssize_t MAX_CHUNK_SIZE = 65535;
-static const ssize_t MAX_MESSAGE_SIZE = 65535;
+static const ssize_t INITIAL_BUFFER_SIZE = 65535;
 static const char *END_OF_MESSAGE[] = {0x00, 0x00};
 
 static const char INIT_MESSAGE = 0x01;
@@ -39,26 +38,19 @@ struct Bolt
 
     // incoming
     char *read_buffer;
-    char *message;
+    char *reader;
     int message_size;
     int message_field_count;
     char message_signature;
-    char *reader;
 
     // outgoing
     char *write_buffer;
-    char *start_of_chunk;
     char *writer;
+    char *start_of_chunk;
 
 };
 
 ssize_t bolt_send(Bolt *bolt);
-
-uint32_t bolt_recv_uint32(Bolt *bolt);
-
-size_t bolt_read_chunk_header(Bolt *bolt);
-
-void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size);
 
 bool bolt_recv(Bolt *bolt);
 

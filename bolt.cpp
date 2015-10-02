@@ -101,47 +101,33 @@ uint32_t bolt_recv_uint32(Bolt *bolt)
     return value;
 }
 
-size_t bolt_read_chunk_header(Bolt *bolt)
-{
-    char buffer[2];
-
-    ssize_t received = bolt_recv_data(bolt, buffer, sizeof(buffer));
-    if (received < 0) {
-        puts("recv failed");
-    }
-
-    return (uint16_t) (buffer[0] << 8 | buffer[1]);
-}
-
-void bolt_read_chunk_data(Bolt *bolt, size_t chunk_size)
-{
-    bolt_recv_data(bolt, bolt->read_buffer, chunk_size);
-}
-
 // Receive the next message
 bool bolt_recv(Bolt *bolt)
 {
+    char header[2];
     bolt->message_size = 0;
     size_t chunk_size;
     do {
-        chunk_size = bolt_read_chunk_header(bolt);
+        ssize_t received = bolt_recv_data(bolt, header, sizeof(header));
+        if (received < 0) {
+            puts("recv failed");
+        }
+        chunk_size = (uint16_t) (header[0] << 8 | header[1]);
         if (chunk_size > 0) {
-            bolt_read_chunk_data(bolt, chunk_size);
-            // TODO check for buffer overflow
-            strncpy(bolt->message + bolt->message_size, bolt->read_buffer, chunk_size);
+            // TODO check for buffer overflow and extend buffer if necessary
+            bolt_recv_data(bolt, bolt->read_buffer + bolt->message_size, chunk_size);
             bolt->message_size += chunk_size;
         }
     } while (chunk_size > 0);
-    bolt->reader = bolt->message;
+    bolt->reader = bolt->read_buffer;
     return packstream_read_structure_header(&bolt->reader, &bolt->message_field_count, &bolt->message_signature);
 }
 
 Bolt *bolt_connect(const char *host, const in_port_t port)
 {
     Bolt *bolt = new Bolt;
-    bolt->write_buffer = new char[MAX_CHUNK_SIZE + 4];
-    bolt->read_buffer = new char[MAX_CHUNK_SIZE];
-    bolt->message = new char[MAX_MESSAGE_SIZE];
+    bolt->read_buffer = new char[INITIAL_BUFFER_SIZE];
+    bolt->write_buffer = new char[INITIAL_BUFFER_SIZE];
 
     // Create socket
     bolt->socket = socket(AF_INET, SOCK_STREAM, 0);

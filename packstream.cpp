@@ -112,7 +112,15 @@ bool packstream_read_integer(char **buffer, int64_t *value)
         *value = marker;
         *buffer += 1;
     }
-    else if (marker == 0xC8 or marker == 0xC9 or marker == 0xCA or marker == 0xCB) {
+    else if (marker == 0xC8) {
+        *value = (uint8_t) (*buffer)[1];
+        *buffer += 2;
+    }
+    else if (marker == 0xC9) {
+        *value = ((uint8_t) (*buffer)[1] << 8) | ((uint8_t) (*buffer)[2]);
+        *buffer += 3;
+    }
+    else if (marker == 0xCA or marker == 0xCB) {
         // TODO
         value = 0;
     }
