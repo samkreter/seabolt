@@ -70,9 +70,9 @@ bool packstream_read_map_header(char **buffer, int32_t *size);
 bool packstream_read_structure_header(char **buffer, int32_t *size, char *signature);
 
 
-size_t packstream_write_null(char *buffer);
+void packstream_write_null(char **buffer);
 
-size_t packstream_write_boolean(char *buffer, bool value);  // maybe write_true and write_false
+void packstream_write_boolean(char **buffer, bool value);  // maybe write_true and write_false
 
 void packstream_write_integer(char **buffer, int64_t value);
 

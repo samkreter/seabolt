@@ -263,22 +263,22 @@ bool packstream_read_structure_header(char **buffer, int32_t *size, char *signat
     return true;
 }
 
-size_t packstream_write_null(char *buffer)
+void packstream_write_null(char **buffer)
 {
     size_t byte_size;
     char data[] = {(char) 0xC0};
     byte_size = sizeof data;
-    memcpy(buffer, data, byte_size);
-    return byte_size;
+    memcpy(*buffer, data, byte_size);
+    *buffer += byte_size;
 }
 
-size_t packstream_write_boolean(char *buffer, bool value)
+void packstream_write_boolean(char **buffer, bool value)
 {
     size_t byte_size;
     char data[] = {value ? (char) 0xC3 : (char) 0xC2};
     byte_size = sizeof data;
-    memcpy(buffer, data, byte_size);
-    return byte_size;
+    memcpy(*buffer, data, byte_size);
+    *buffer += byte_size;
 }
 
 void packstream_write_integer(char **buffer, int64_t value)
